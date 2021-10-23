@@ -1,12 +1,12 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   main.c                                             :+:      :+:    :+:   */
+/*   mini_paint.c                                       :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
 /*   By: lucocozz <lucocozz@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2021/10/19 14:17:38 by lucocozz          #+#    #+#             */
-/*   Updated: 2021/10/22 20:30:16 by lucocozz         ###   ########.fr       */
+/*   Updated: 2021/10/23 13:38:43 by lucocozz         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -41,7 +41,7 @@ static int	init_plane(t_plane *plane, FILE *file)
 		return (-1);
 	if (!(plane->width > 0 && plane->width <= 300) || !(plane->height > 0 && plane->height <= 300))
 		return (-1);
-	plane->matrice = calloc(plane->height * plane->height, sizeof(char));
+	plane->matrice = calloc(plane->width * plane->height, sizeof(char));
 	if (plane->matrice == NULL)
 		return (-1);
 	memset(plane->matrice, plane->filler, plane->height * plane->width);
@@ -61,7 +61,7 @@ static int	init_circle(t_circle *circle, FILE *file)
 		circle->is_full = 1;
 	else
 		return (-2);
-	if (circle->radius == 0)
+	if (circle->radius >= 0)
 		return (-2);
 	return (ret);
 }
