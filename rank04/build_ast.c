@@ -6,11 +6,22 @@
 /*   By: lucocozz <lucocozz@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2021/11/30 20:26:00 by lucocozz          #+#    #+#             */
-/*   Updated: 2021/11/30 21:05:57 by lucocozz         ###   ########.fr       */
+/*   Updated: 2021/12/01 10:36:06 by lucocozz         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "microshell.h"
+
+void	free_ast(t_node	*ast)
+{
+	if (ast == NULL)
+		return ;
+	free_ast(ast->left);
+	free_ast(ast->right);
+	if (ast->command != NULL)
+		free(ast->command);
+	free(ast);
+}
 
 t_node	*create_node(t_token type)
 {
@@ -29,10 +40,17 @@ t_node	*create_node(t_token type)
 void	node_pipe(t_node **ast)
 {
 	t_node	*node;
+	t_node	*tmp;
 
+	tmp = *ast;
 	node = create_node(Pipe);
 	if (node == NULL)
-		
+	{
+		free_ast(*ast);
+		exit_error(EXIT_FAILURE, "error: fatal\n");
+	}
+	node->left = tmp;
+	*ast = node;
 }
 
 t_node	*build_ast(int size, char **arg)
@@ -47,7 +65,7 @@ t_node	*build_ast(int size, char **arg)
 		else if (arg[i][0] == ';')
 			node_semicolon(&ast);
 		else
-			i += node_command(&ast);
+			node_command(&ast, &i);
 		i++;
 	}
 	return (ast);

@@ -6,7 +6,7 @@
 /*   By: lucocozz <lucocozz@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2021/11/30 19:29:08 by lucocozz          #+#    #+#             */
-/*   Updated: 2021/11/30 20:28:21 by lucocozz         ###   ########.fr       */
+/*   Updated: 2021/12/01 10:29:08 by lucocozz         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -37,7 +37,11 @@ typedef struct s_node
 	char			**command;
 }					t_node;
 
+int		ft_strlen(char *str);
+void	ft_putstr_fd(int fd, char *str);
 
+void	exit_error(int status, char *str);
 t_node	*build_ast(int size, char **arg);
+
 
 #endif
