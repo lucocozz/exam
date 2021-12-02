@@ -1,40 +1,33 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   main.c                                             :+:      :+:    :+:   */
+/*   cd.c                                               :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
 /*   By: lucocozz <lucocozz@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2021/11/30 19:28:01 by lucocozz          #+#    #+#             */
-/*   Updated: 2021/12/01 22:18:37 by lucocozz         ###   ########.fr       */
+/*   Created: 2021/12/01 22:19:25 by lucocozz          #+#    #+#             */
+/*   Updated: 2021/12/01 22:27:59 by lucocozz         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "microshell.h"
 
-void	free_pipeline(t_command *pipeline)
+void	cd(char **argv)
 {
-	t_command	*to_free;
+	int	i;
 
-	while (pipeline != NULL)
+	i = 0;
+	while (argv[i] != NULL)
+		i++;
+	if (i != 2)
+		ft_putstr_fd(STDERR_FILENO, "error: cd: bad arguments\n");
+	else
 	{
-		to_free = pipeline;
-		pipeline = pipeline->next;
-		free(to_free->argv);
-		free(to_free);
+		if (chdir(argv[1]) == -1)
+		{
+			ft_putstr_fd(STDERR_FILENO, "error: cd: cannot change directory to ");
+			ft_putstr_fd(STDERR_FILENO, argv[1]);
+			ft_putstr_fd(STDERR_FILENO, "\n");
+		}
 	}
-}
-
-int	main(int argc, char **argv, char **env)
-{
-	int			i = 1;
-	t_command	*pipeline;
-
-	while (i < argc)
-	{
-		pipeline = parse_input(argc, argv, &i);
-		exec_pipeline(pipeline, env);
-		free_pipeline(pipeline);
-	}
-	return (0);
 }

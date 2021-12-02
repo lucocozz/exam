@@ -4,7 +4,7 @@ NAME= microshell
 $(NAME): all
 
 all:
-	clang -Wall -Wextra -Werror *.c -I./ -o $(NAME)
+	clang -Wall -Wextra -Werror -g3 *.c -I./ -o $(NAME)
 
 clean:
 	rm $(NAME)
