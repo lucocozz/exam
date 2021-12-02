@@ -6,7 +6,7 @@
 /*   By: lucocozz <lucocozz@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2021/12/01 18:43:27 by lucocozz          #+#    #+#             */
-/*   Updated: 2021/12/01 22:09:28 by lucocozz         ###   ########.fr       */
+/*   Updated: 2021/12/02 15:20:12 by lucocozz         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -82,7 +82,6 @@ t_command	*parse_input(int argc, char **argv, int *i)
 			exit_error(EXIT_FAILURE, "error: fatal\n");
 		}
 		push_back(&pipeline, command);
-		*i += 1;
 	}
 	return (pipeline);
 }
