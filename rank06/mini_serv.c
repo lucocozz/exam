@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <strings.h>
 
+int id = 0;
+
 typedef struct s_client
 {
 	int fd;
@@ -23,7 +25,7 @@ void exit_error(const char *msg)
 	exit(EXIT_FAILURE);
 }
 
-int create_server(char *port)
+int init_server(char *port)
 {
 	int server_fd;
 	struct sockaddr_in servaddr;
@@ -71,34 +73,32 @@ t_client *create_client(int fd, int id)
 	return (client);
 }
 
-void broadcast(t_client *clients, int id_broadcast, char *msg)
+void broadcast(t_client *clients, int fd_broadcast, char *msg)
 {
 	while (clients != NULL)
 	{
-		if (clients->id != id_broadcast)
+		if (clients->fd != fd_broadcast)
 			send(clients->fd, msg, strlen(msg), 0);
 		clients = clients->next;
 	}
 }
 
-void accept_connection(t_client **clients, int server_fd, int id)
+void accept_connection(t_client **clients, int server_fd)
 {
 	char msg[100];
-	int connfd;
+	int client_fd;
 	unsigned int addrlen;
 	struct sockaddr_in cli;
 	t_client *new_client;
 
 	addrlen = sizeof(cli);
-	connfd = accept(server_fd, (struct sockaddr *)&cli, &addrlen);
-	if (connfd < 0)
+	client_fd = accept(server_fd, (struct sockaddr *)&cli, &addrlen);
+	if (client_fd < 0)
 	{
 		free_clients(*clients);
 		exit_error("Fatal error\n");
 	}
-	sprintf(msg, "server: client %d just arrived\n", id);
-	broadcast(*clients, -1, msg);
-	new_client = create_client(connfd, id);
+	new_client = create_client(client_fd, id);
 	if (new_client == NULL)
 	{
 		free_clients(*clients);
@@ -111,94 +111,106 @@ void accept_connection(t_client **clients, int server_fd, int id)
 		new_client->next = *clients;
 		*clients = new_client;
 	}
+	sprintf(msg, "server: client %d just arrived\n", id++);
+	broadcast(*clients, client_fd, msg);
 }
 
-void remove_client(t_client **clients, int id_remove)
+void remove_client(t_client **clients, int fd_remove)
 {
-	t_client *prev;
-	t_client *to_remove;
+	char msg[100] = {0};
+	t_client *prev = NULL;
+	t_client *to_remove = *clients;
 
-	to_remove = *clients;
-	if (to_remove != NULL && to_remove->id == id_remove)
+	while (to_remove != NULL && to_remove->fd != fd_remove)
 	{
-		*clients = to_remove->next;
-		close(to_remove->fd);
-		free(to_remove);
+		prev = to_remove;
+		to_remove = to_remove->next;
 	}
+	if (prev != NULL)
+		prev->next = to_remove->next;
 	else
+		*clients = to_remove->next;
+	sprintf(msg, "server: client %d just left\n", to_remove->id);
+	close(to_remove->fd);
+	free(to_remove);
+	broadcast(*clients, -1, msg);
+}
+
+int get_line_size(char *str)
+{
+	int i = 0;
+
+	while (str[i] != '\n' && str[i] != '\0')
+		i++;
+	return (i);
+}
+
+void send_data(t_client *clients, char *data, int isset_fd)
+{
+	int line_size = 0;
+	char *src, *dest;
+	char msg[50000] = {0};
+	t_client *c;
+
+	src = data;
+	dest = msg;
+	c = clients;
+	while (c != NULL && c->fd != isset_fd)
+		c = c->next;
+	while (src[(line_size = get_line_size(src))] != '\0')
 	{
-		while (to_remove != NULL && to_remove->id != id_remove)
+		if (src[line_size] == '\n')
 		{
-			prev = to_remove;
-			to_remove = to_remove->next;
+			src[line_size] = '\0';
+			line_size++;
 		}
-		if (to_remove != NULL)
-		{
-			prev->next = to_remove->next;
-			close(to_remove->fd);
-			free(to_remove);
-		}
+		dest += sprintf(dest, "client %d: %s\n", c->id, src);
+		src += line_size;
 	}
+	broadcast(clients, isset_fd, msg);
 }
 
 int main(int argc, char **argv)
 {
-	char data[4096];
-	char msg[4196];
+	int setsize;
 	int server_fd;
-	int last_id = 0;
-	int bytes_recv;
+	int bytes_recv = 0;
+	char data[500000] = {0};
 	fd_set read_fds;
 	t_client *clients = NULL;
-	t_client *current = NULL;
 
 	if (argc != 2)
 		exit_error("Wrong number of arguments\n");
-	server_fd = create_server(argv[1]);
+	server_fd = init_server(argv[1]);
 	while (1)
 	{
 		FD_ZERO(&read_fds);
+		setsize = server_fd;
 		FD_SET(server_fd, &read_fds);
-		for (current = clients; current != NULL; current = current->next)
+		for (t_client *current = clients; current != NULL; current = current->next)
+		{
+			if (current->fd > setsize)
+				setsize = current->fd;
 			FD_SET(current->fd, &read_fds);
-		if (select(FD_SETSIZE, &read_fds, NULL, NULL, NULL) < 0)
+		}
+		if (select(setsize + 1, &read_fds, NULL, NULL, NULL) < 0)
 		{
 			free_clients(clients);
 			exit_error("Fatal error\n");
 		}
-		if (FD_ISSET(server_fd, &read_fds))
+		for (int isset_fd = 0; isset_fd <= setsize; isset_fd++)
 		{
-			accept_connection(&clients, server_fd, last_id);
-			last_id++;
-		}
-		current = clients;
-		while (current != NULL)
-		{
-			if (FD_ISSET(current->fd, &read_fds))
+			if (FD_ISSET(isset_fd, &read_fds))
 			{
-				bytes_recv = recv(current->fd, data, 4096, 0);
-				if (bytes_recv < 1)
-				{
-					t_client *tmp;
-
-					tmp = current;
-					current = current->next;
-					sprintf(msg, "server: client %d just left\n", tmp->id);
-					remove_client(&clients, tmp->id);
-					broadcast(clients, -1, msg);
-				}
+				if (isset_fd == server_fd)
+					accept_connection(&clients, server_fd);
+				else if ((bytes_recv = recv(isset_fd, data, 500000, 0)) > 0)
+					send_data(clients, data, isset_fd);
 				else
-				{
-					sprintf(msg, "client %d: %s", current->id, data);
-					broadcast(clients, current->id, msg);
-					current = current->next;
-				}
+					remove_client(&clients, isset_fd);
+				bzero(data, bytes_recv);
 			}
-			else
-				current = current->next;
 		}
-		bzero(msg, 4196);
-		bzero(data, 4096);
 	}
 	free_clients(clients);
 }
