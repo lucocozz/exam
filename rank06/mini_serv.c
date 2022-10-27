@@ -131,9 +131,9 @@ void remove_client(t_client **clients, int fd_remove)
 	else
 		*clients = to_remove->next;
 	sprintf(msg, "server: client %d just left\n", to_remove->id);
+	broadcast(*clients, -1, msg);
 	close(to_remove->fd);
 	free(to_remove);
-	broadcast(*clients, -1, msg);
 }
 
 int get_line_size(char *str)
@@ -148,15 +148,14 @@ int get_line_size(char *str)
 void send_data(t_client *clients, char *data, int isset_fd)
 {
 	int line_size = 0;
-	char *src, *dest;
-	char msg[50000] = {0};
-	t_client *c;
+	char msg[500500] = {0};
+	char *src = data;
+	char *dest = msg;
+	t_client *current;
 
-	src = data;
-	dest = msg;
-	c = clients;
-	while (c != NULL && c->fd != isset_fd)
-		c = c->next;
+	current = clients;
+	while (current != NULL && current->fd != isset_fd)
+		current = current->next;
 	while (src[(line_size = get_line_size(src))] != '\0')
 	{
 		if (src[line_size] == '\n')
@@ -164,7 +163,7 @@ void send_data(t_client *clients, char *data, int isset_fd)
 			src[line_size] = '\0';
 			line_size++;
 		}
-		dest += sprintf(dest, "client %d: %s\n", c->id, src);
+		dest += sprintf(dest, "client %d: %s\n", current->id, src);
 		src += line_size;
 	}
 	broadcast(clients, isset_fd, msg);
@@ -175,6 +174,7 @@ int main(int argc, char **argv)
 	int setsize;
 	int server_fd;
 	int bytes_recv = 0;
+	char *dest;
 	char data[500000] = {0};
 	fd_set read_fds;
 	t_client *clients = NULL;
@@ -195,22 +195,33 @@ int main(int argc, char **argv)
 		}
 		if (select(setsize + 1, &read_fds, NULL, NULL, NULL) < 0)
 		{
+			close(server_fd);
 			free_clients(clients);
 			exit_error("Fatal error\n");
 		}
 		for (int isset_fd = 0; isset_fd <= setsize; isset_fd++)
 		{
+			dest = data;
 			if (FD_ISSET(isset_fd, &read_fds))
 			{
 				if (isset_fd == server_fd)
 					accept_connection(&clients, server_fd);
-				else if ((bytes_recv = recv(isset_fd, data, 500000, 0)) > 0)
+				else if ((bytes_recv = recv(isset_fd, dest, 66500, 0)) > 0)
+				{
+					while (bytes_recv >= 66500)
+					{
+						dest += bytes_recv;
+						bytes_recv = recv(isset_fd, dest, 66500, 0);
+					}
 					send_data(clients, data, isset_fd);
+				}
 				else
 					remove_client(&clients, isset_fd);
-				bzero(data, bytes_recv);
 			}
+			bzero(data, strlen(data));
 		}
 	}
+	close(server_fd);
 	free_clients(clients);
+	return (EXIT_SUCCESS);
 }
