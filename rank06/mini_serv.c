@@ -10,12 +10,12 @@
 #include <stdio.h>
 #include <strings.h>
 
-int id = 0;
-
 typedef struct s_client
 {
 	int fd;
 	int id;
+	int	offest;
+	char data[500000];
 	struct s_client *next;
 } t_client;
 
@@ -23,6 +23,27 @@ void exit_error(const char *msg)
 {
 	write(STDERR_FILENO, msg, strlen(msg));
 	exit(EXIT_FAILURE);
+}
+
+void free_clients(t_client *clients)
+{
+	t_client *to_free;
+
+	while (clients != NULL)
+	{
+		to_free = clients;
+		clients = clients->next;
+		close(to_free->fd);
+		free(to_free);
+	}
+}
+
+void	exit_fatal(t_client *clients, int server_fd)
+{
+	free_clients(clients);
+	if (server_fd != -1)
+		close(server_fd);
+	exit_error("Fatal error\n");
 }
 
 int init_server(char *port)
@@ -47,19 +68,6 @@ int init_server(char *port)
 	return (server_fd);
 }
 
-void free_clients(t_client *clients)
-{
-	t_client *to_free;
-
-	while (clients != NULL)
-	{
-		to_free = clients;
-		clients = clients->next;
-		close(to_free->fd);
-		free(to_free);
-	}
-}
-
 t_client *create_client(int fd, int id)
 {
 	t_client *client;
@@ -70,6 +78,8 @@ t_client *create_client(int fd, int id)
 	client->fd = fd;
 	client->id = id;
 	client->next = NULL;
+	client->offest = 0;
+	bzero(client->data, 500000);
 	return (client);
 }
 
@@ -90,27 +100,17 @@ void accept_connection(t_client **clients, int server_fd)
 	unsigned int addrlen;
 	struct sockaddr_in cli;
 	t_client *new_client;
+	static int	id = 0;
 
 	addrlen = sizeof(cli);
 	client_fd = accept(server_fd, (struct sockaddr *)&cli, &addrlen);
 	if (client_fd < 0)
-	{
-		free_clients(*clients);
-		exit_error("Fatal error\n");
-	}
+		exit_fatal(*clients, server_fd);
 	new_client = create_client(client_fd, id);
 	if (new_client == NULL)
-	{
-		free_clients(*clients);
-		exit_error("Fatal error\n");
-	}
-	if (*clients == NULL)
-		*clients = new_client;
-	else
-	{
-		new_client->next = *clients;
-		*clients = new_client;
-	}
+		exit_fatal(*clients, server_fd);
+	new_client->next = *clients;
+	*clients = new_client;
 	sprintf(msg, "server: client %d just arrived\n", id++);
 	broadcast(*clients, client_fd, msg);
 }
@@ -145,81 +145,91 @@ int get_line_size(char *str)
 	return (i);
 }
 
-void send_data(t_client *clients, char *data, int isset_fd)
+void send_data(t_client *clients, t_client *current, int bytes_recv)
 {
 	int line_size = 0;
 	char msg[500500] = {0};
-	char *src = data;
+	char *src = current->data;
 	char *dest = msg;
-	t_client *current;
 
-	current = clients;
-	while (current != NULL && current->fd != isset_fd)
-		current = current->next;
-	while (src[(line_size = get_line_size(src))] != '\0')
+	// printf("bytes_recv = %d\n", bytes_recv);
+	if (bytes_recv < 65500)
 	{
-		if (src[line_size] == '\n')
+		while (src[(line_size = get_line_size(src))] != '\0')
 		{
-			src[line_size] = '\0';
-			line_size++;
+			if (src[line_size] == '\n')
+			{
+				src[line_size] = '\0';
+				line_size++;
+			}
+			dest += sprintf(dest, "client %d: %s\n", current->id, src);
+			src += line_size;
 		}
-		dest += sprintf(dest, "client %d: %s\n", current->id, src);
-		src += line_size;
+		broadcast(clients, current->fd, msg);
+		bzero(current->data, current->offest + bytes_recv);
+		current->offest = 0;
 	}
-	broadcast(clients, isset_fd, msg);
+	else
+		current->offest += bytes_recv;
+}
+
+int	init_read_fds(t_client *clients, fd_set *read_fds, int server_fd)
+{
+	int	setsize;
+
+	FD_ZERO(read_fds);
+	setsize = server_fd;
+	FD_SET(server_fd, read_fds);
+	for (t_client *current = clients; current != NULL; current = current->next)
+	{
+		if (current->fd > setsize)
+			setsize = current->fd;
+		FD_SET(current->fd, read_fds);
+	}
+	return (setsize);
+}
+
+t_client	*get_client_from_fd(t_client *clients, int fd)
+{
+	while (clients != NULL)
+	{
+		if (clients->fd == fd)
+			return (clients);
+		clients = clients->next;
+	}
+	return (NULL);
+}
+
+void	handle_event(t_client **clients, t_client *current, int server_fd)
+{
+	int	bytes_recv = 0;
+
+	if (current == NULL)
+		accept_connection(clients, server_fd);
+	else if ((bytes_recv = recv(current->fd, &current->data[current->offest], 65500, 0)) > 0)
+		send_data(*clients, current, bytes_recv);
+	else
+		remove_client(clients, current->fd);
 }
 
 int main(int argc, char **argv)
 {
-	int setsize;
-	int server_fd;
-	int bytes_recv = 0;
-	char *dest;
-	char data[500000] = {0};
-	fd_set read_fds;
-	t_client *clients = NULL;
+	int 		setsize;
+	int 		server_fd;
+	fd_set		read_fds;
+	t_client	*clients = NULL;
 
 	if (argc != 2)
 		exit_error("Wrong number of arguments\n");
 	server_fd = init_server(argv[1]);
 	while (1)
 	{
-		FD_ZERO(&read_fds);
-		setsize = server_fd;
-		FD_SET(server_fd, &read_fds);
-		for (t_client *current = clients; current != NULL; current = current->next)
-		{
-			if (current->fd > setsize)
-				setsize = current->fd;
-			FD_SET(current->fd, &read_fds);
-		}
+		setsize = init_read_fds(clients, &read_fds, server_fd);
 		if (select(setsize + 1, &read_fds, NULL, NULL, NULL) < 0)
-		{
-			close(server_fd);
-			free_clients(clients);
-			exit_error("Fatal error\n");
-		}
+			exit_fatal(clients, server_fd);
 		for (int isset_fd = 0; isset_fd <= setsize; isset_fd++)
-		{
-			dest = data;
 			if (FD_ISSET(isset_fd, &read_fds))
-			{
-				if (isset_fd == server_fd)
-					accept_connection(&clients, server_fd);
-				else if ((bytes_recv = recv(isset_fd, dest, 66500, 0)) > 0)
-				{
-					while (bytes_recv >= 66500)
-					{
-						dest += bytes_recv;
-						bytes_recv = recv(isset_fd, dest, 66500, 0);
-					}
-					send_data(clients, data, isset_fd);
-				}
-				else
-					remove_client(&clients, isset_fd);
-			}
-			bzero(data, strlen(data));
-		}
+				handle_event(&clients, get_client_from_fd(clients, isset_fd), server_fd);
 	}
 	close(server_fd);
 	free_clients(clients);
