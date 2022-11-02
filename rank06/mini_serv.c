@@ -79,7 +79,7 @@ t_client *create_client(int fd, int id)
 	client->id = id;
 	client->next = NULL;
 	client->offest = 0;
-	bzero(client->data, 500000);
+	client->data[0] = '\0';
 	return (client);
 }
 
@@ -152,8 +152,7 @@ void send_data(t_client *clients, t_client *current, int bytes_recv)
 	char *src = current->data;
 	char *dest = msg;
 
-	// printf("bytes_recv = %d\n", bytes_recv);
-	if (bytes_recv < 65500)
+	if (current->data[current->offest + (bytes_recv - 1)] == '\n')
 	{
 		while (src[(line_size = get_line_size(src))] != '\0')
 		{
@@ -166,7 +165,7 @@ void send_data(t_client *clients, t_client *current, int bytes_recv)
 			src += line_size;
 		}
 		broadcast(clients, current->fd, msg);
-		bzero(current->data, current->offest + bytes_recv);
+		current->data[0] = '\0';
 		current->offest = 0;
 	}
 	else
