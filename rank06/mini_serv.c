@@ -10,12 +10,14 @@
 #include <stdio.h>
 #include <strings.h>
 
+int id = 0;
+
 typedef struct s_client
 {
 	int fd;
 	int id;
 	int	offest;
-	char data[500000];
+	char data[150000];
 	struct s_client *next;
 } t_client;
 
@@ -85,10 +87,12 @@ t_client *create_client(int fd, int id)
 
 void broadcast(t_client *clients, int fd_broadcast, char *msg)
 {
+	size_t	size = strlen(msg);
+
 	while (clients != NULL)
 	{
 		if (clients->fd != fd_broadcast)
-			send(clients->fd, msg, strlen(msg), 0);
+			send(clients->fd, msg, size, 0);
 		clients = clients->next;
 	}
 }
@@ -100,18 +104,21 @@ void accept_connection(t_client **clients, int server_fd)
 	unsigned int addrlen;
 	struct sockaddr_in cli;
 	t_client *new_client;
-	static int	id = 0;
 
 	addrlen = sizeof(cli);
 	client_fd = accept(server_fd, (struct sockaddr *)&cli, &addrlen);
 	if (client_fd < 0)
 		exit_fatal(*clients, server_fd);
 	new_client = create_client(client_fd, id);
+	id++;
 	if (new_client == NULL)
+	{
+		close(client_fd);
 		exit_fatal(*clients, server_fd);
+	}
 	new_client->next = *clients;
 	*clients = new_client;
-	sprintf(msg, "server: client %d just arrived\n", id++);
+	sprintf(msg, "server: client %d just arrived\n", new_client->id);
 	broadcast(*clients, client_fd, msg);
 }
 
@@ -121,7 +128,7 @@ void remove_client(t_client **clients, int fd_remove)
 	t_client *prev = NULL;
 	t_client *to_remove = *clients;
 
-	while (to_remove != NULL && to_remove->fd != fd_remove)
+	while (to_remove->fd != fd_remove)
 	{
 		prev = to_remove;
 		to_remove = to_remove->next;
@@ -147,8 +154,8 @@ int get_line_size(char *str)
 
 void send_data(t_client *clients, t_client *current, int bytes_recv)
 {
-	int line_size = 0;
-	char msg[500500] = {0};
+	int line_size;
+	char msg[200000] = {0};
 	char *src = current->data;
 	char *dest = msg;
 
@@ -179,11 +186,12 @@ int	init_read_fds(t_client *clients, fd_set *read_fds, int server_fd)
 	FD_ZERO(read_fds);
 	setsize = server_fd;
 	FD_SET(server_fd, read_fds);
-	for (t_client *current = clients; current != NULL; current = current->next)
+	while (clients != NULL)
 	{
-		if (current->fd > setsize)
-			setsize = current->fd;
-		FD_SET(current->fd, read_fds);
+		if (clients->fd > setsize)
+			setsize = clients->fd;
+		FD_SET(clients->fd, read_fds);
+		clients = clients->next;
 	}
 	return (setsize);
 }
@@ -201,7 +209,7 @@ t_client	*get_client_from_fd(t_client *clients, int fd)
 
 void	handle_event(t_client **clients, t_client *current, int server_fd)
 {
-	int	bytes_recv = 0;
+	int	bytes_recv;
 
 	if (current == NULL)
 		accept_connection(clients, server_fd);
